@@ -1,0 +1,70 @@
+{
+  "title": "FraudStream · Pipeline",
+  "uid": "fraudstream-pipeline",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "5s",
+  "time": { "from": "now-30m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Txn throughput (1m)",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+      "targets": [{ "expr": "sum(rate(fraudstream_txns_processed_total[1m]))", "refId": "A", "datasource": { "type": "prometheus", "uid": "prom" } }]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Alerts / min",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
+      "targets": [{ "expr": "sum(increase(fraudstream_alerts_raised_total[1m]))", "refId": "A", "datasource": { "type": "prometheus", "uid": "prom" } }]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Labels ✓ / ✕",
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 0 },
+      "targets": [
+        { "expr": "sum(fraudstream_labels_total{status=\"confirmed_fraud\"})", "refId": "A", "datasource": { "type": "prometheus", "uid": "prom" } },
+        { "expr": "sum(fraudstream_labels_total{status=\"false_positive\"})", "refId": "B", "datasource": { "type": "prometheus", "uid": "prom" } }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Detector p95 latency",
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 },
+      "targets": [{ "expr": "histogram_quantile(0.95, sum(rate(fraudstream_txn_process_seconds_bucket[5m])) by (le))", "refId": "A", "datasource": { "type": "prometheus", "uid": "prom" } }]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Rule hits / min by rule",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 6 },
+      "targets": [{ "expr": "sum by (rule) (rate(fraudstream_rule_hits_total[1m]))", "refId": "A", "legendFormat": "{{rule}}", "datasource": { "type": "prometheus", "uid": "prom" } }]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Throughput & scoring",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 6 },
+      "targets": [
+        { "expr": "rate(fraudstream_txns_processed_total[1m])", "refId": "A", "legendFormat": "detector txns/s", "datasource": { "type": "prometheus", "uid": "prom" } },
+        { "expr": "rate(fraudstream_scored_total[1m])", "refId": "B", "legendFormat": "ml scored/s", "datasource": { "type": "prometheus", "uid": "prom" } },
+        { "expr": "rate(fraudstream_alerts_raised_total[1m])", "refId": "C", "legendFormat": "alerts/s", "datasource": { "type": "prometheus", "uid": "prom" } }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Latency distribution",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 15 },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(fraudstream_txn_process_seconds_bucket[5m])) by (le))", "refId": "A", "legendFormat": "p50", "datasource": { "type": "prometheus", "uid": "prom" } },
+        { "expr": "histogram_quantile(0.95, sum(rate(fraudstream_txn_process_seconds_bucket[5m])) by (le))", "refId": "B", "legendFormat": "p95", "datasource": { "type": "prometheus", "uid": "prom" } },
+        { "expr": "histogram_quantile(0.99, sum(rate(fraudstream_txn_process_seconds_bucket[5m])) by (le))", "refId": "C", "legendFormat": "p99", "datasource": { "type": "prometheus", "uid": "prom" } }
+      ]
+    }
+  ]
+}
