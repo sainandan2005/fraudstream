@@ -1,0 +1,686 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FraudStream · Live Fraud Tracing</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root {
+    --bg: #0b0f17;
+    --panel: #131a28;
+    --panel-edge: #1e293b;
+    --text: #e2e8f0;
+    --muted: #7c8aa5;
+    --accent: #4f9cf9;
+    --danger: #ff5d5d;
+    --warn: #ffb020;
+    --ok: #35c28f;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, sans-serif;
+    padding: 20px 24px;
+    max-width: 1320px;
+    margin: 0 auto;
+  }
+  header { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; flex-wrap: wrap; }
+  header h1 { font-size: 20px; letter-spacing: 0.5px; }
+  header h1 span { color: var(--accent); }
+  .pill {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--muted);
+    border: 1px solid var(--panel-edge); border-radius: 999px; padding: 3px 11px;
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .pill.on { color: var(--ok); } .pill.on .dot { background: var(--ok); box-shadow: 0 0 8px var(--ok); animation: pulse 1.6s infinite; }
+  .pill.stale { color: var(--danger); } .pill.stale .dot { background: var(--danger); }
+  @keyframes pulse { 50% { opacity: 0.4; } }
+  label[for=pause] { display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 12px; color: var(--muted); }
+
+  .tabs { display: flex; gap: 6px; margin-bottom: 16px; border-bottom: 1px solid var(--panel-edge); padding-bottom: 0; }
+  .tab {
+    background: none; border: none; color: var(--muted);
+    font-size: 13.5px; font-weight: 600; padding: 9px 16px; cursor: pointer;
+    border-bottom: 2px solid transparent; letter-spacing: 0.3px;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tabpane { display: none; } .tabpane.active { display: block; }
+
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .kpi { background: var(--panel); border: 1px solid var(--panel-edge); border-radius: 10px; padding: 13px 15px; }
+  .kpi .label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
+  .kpi .value { font-size: 25px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .kpi.alerts .value { color: var(--danger); }
+  .kpi.rate .value { color: var(--warn); }
+  .kpi.txns .value { color: var(--accent); }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 16px; }
+  @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--panel-edge); border-radius: 10px; padding: 15px; }
+  .panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 12px; }
+
+  .bar-row { display: grid; grid-template-columns: 130px 1fr 44px; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 13px; }
+  .bar-track { background: #0d1320; border-radius: 4px; height: 14px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; min-width: 2px; }
+  .bar-row .count { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+
+  .trend { display: flex; align-items: flex-end; gap: 4px; height: 110px; }
+  .trend .col { flex: 1; background: linear-gradient(180deg, var(--danger), #b91c1c); border-radius: 3px 3px 0 0; min-height: 2px; position: relative; }
+  .trend .col .tip { display: none; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: #000; padding: 3px 7px; border-radius: 4px; font-size: 11px; white-space: nowrap; z-index: 5; }
+  .trend .col:hover .tip { display: block; }
+  .trend-axis { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; margin-top: 6px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th {
+    text-align: left; color: var(--muted); font-weight: 600; font-size: 11px;
+    text-transform: uppercase; letter-spacing: 1px; padding: 8px 10px;
+    border-bottom: 1px solid var(--panel-edge); position: sticky; top: 0; background: var(--panel); z-index: 2;
+  }
+  td { padding: 8px 10px; border-bottom: 1px solid #182234; vertical-align: top; }
+  tr:hover td { background: #16202f; }
+  .scroll { max-height: 520px; overflow-y: auto; border: 1px solid var(--panel-edge); border-radius: 8px; }
+  .mono { font-family: Consolas, monospace; font-size: 12px; color: var(--muted); }
+  .amt { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .cardlink { cursor: pointer; color: var(--accent); text-decoration: underline dotted; }
+  .cardlink:hover { color: #7db8ff; }
+
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-weight: 700; font-size: 12px; white-space: nowrap; }
+  .badge.s100 { background: rgba(255,93,93,0.15); color: var(--danger); }
+  .badge.s85 { background: rgba(255,176,32,0.15); color: var(--warn); }
+  .badge.s70 { background: rgba(79,156,249,0.15); color: var(--accent); }
+  .badge.clean { background: rgba(53,194,143,0.10); color: var(--ok); border: 1px solid rgba(53,194,143,0.35); font-weight: 600; }
+
+  .chip { display: inline-block; padding: 1px 8px; border-radius: 5px; font-size: 11px; font-weight: 600; margin: 1px 3px 1px 0; cursor: default; }
+  .chip.amount_threshold { background: rgba(249,115,22,0.16); color: #fb923c; }
+  .chip.velocity_count { background: rgba(56,189,248,0.14); color: #38bdf8; }
+  .chip.velocity_sum { background: rgba(167,139,250,0.15); color: #a78bfa; }
+  .chip.geo_velocity { background: rgba(52,211,153,0.14); color: #34d399; }
+  .chip.blacklist { background: rgba(239,68,68,0.18); color: #f87171; }
+  .detail { color: var(--muted); font-size: 11.5px; margin-top: 3px; }
+  .empty { color: var(--muted); text-align: center; padding: 40px 0; font-size: 14px; }
+
+  #banner {
+    display: none;
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    background: #7f1d1d; color: #fecaca; text-align: center;
+    padding: 8px 16px; font-size: 13px; font-weight: 600;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+  }
+  #banner.show { display: block; }
+
+  #map { height: 560px; border-radius: 8px; z-index: 1; background: #0d1320; }
+  .leaflet-container { background: #0d1320; }
+  .map-legend {
+    position: absolute; top: 12px; right: 12px; z-index: 500;
+    background: rgba(11,15,23,0.88); border: 1px solid var(--panel-edge);
+    border-radius: 8px; padding: 8px 12px; font-size: 12px; color: var(--muted);
+  }
+  .map-legend b { color: var(--text); }
+  .pin { width: 14px; height: 14px; border-radius: 50%; background: var(--danger); border: 2px solid #fff3; animation: pinpulse 1.4s infinite; }
+  @keyframes pinpulse { 70% { box-shadow: 0 0 0 14px rgba(255,93,93,0); } }
+  .chip.ml { background: rgba(192,132,252,0.16); color: #c084fc; }
+  .statuschip { display: inline-block; padding: 1px 8px; border-radius: 999px; border: 1px solid; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; }
+  .actbtn { background: #0d1320; color: var(--muted); border: 1px solid var(--panel-edge); border-radius: 6px; width: 26px; height: 23px; cursor: pointer; font-size: 11.5px; margin: 1px 3px 1px 0; }
+  .actbtn:hover { color: var(--text); border-color: var(--accent); }
+  .filterbar select { background: #0d1320; color: var(--text); border: 1px solid var(--panel-edge); border-radius: 7px; padding: 7px 9px; font-size: 13px; }
+
+  .filterbar { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+  .filterbar input[type=text], .filterbar input[type=number], .filterbar input[type=search] {
+    background: #0d1320; border: 1px solid var(--panel-edge); border-radius: 7px;
+    color: var(--text); padding: 7px 11px; font-size: 13px; outline: none;
+  }
+  .filterbar input:focus { border-color: var(--accent); }
+  .filterbar input[type=search] { width: 260px; }
+  .filterbar input[type=number] { width: 110px; }
+  .filterbar label { font-size: 12.5px; color: var(--muted); display: flex; gap: 5px; align-items: center; cursor: pointer; }
+  .resultcount { margin-left: auto; font-size: 12px; color: var(--muted); }
+
+  /* card trace drawer */
+  .overlay { position: fixed; inset: 0; background: rgba(4,8,15,0.55); opacity: 0; pointer-events: none; transition: opacity 0.25s; z-index: 40; }
+  .overlay.open { opacity: 1; pointer-events: auto; }
+  .drawer {
+    position: fixed; top: 0; right: -560px; width: min(560px, 96vw); height: 100vh;
+    background: #101725; border-left: 1px solid var(--panel-edge);
+    transition: right 0.28s ease; z-index: 50; overflow-y: auto; padding: 22px;
+  }
+  .drawer.open { right: 0; }
+  .drawer-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .drawer-head h3 { font-size: 17px; font-family: Consolas, monospace; }
+  .closex { margin-left: auto; background: none; border: 1px solid var(--panel-edge); color: var(--muted); border-radius: 7px; width: 30px; height: 30px; cursor: pointer; font-size: 15px; }
+  .closex:hover { color: var(--text); border-color: var(--muted); }
+  .stategrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 18px; }
+  .statebox { background: var(--panel); border: 1px solid var(--panel-edge); border-radius: 8px; padding: 10px 12px; }
+  .statebox .label { font-size: 10.5px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
+  .statebox .value { font-size: 16px; font-weight: 700; margin-top: 3px; font-variant-numeric: tabular-nums; }
+  .bl-tag { display: inline-block; margin-left: 8px; padding: 1px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .bl-yes { background: rgba(239,68,68,0.18); color: #f87171; }
+  .bl-no { background: rgba(53,194,143,0.12); color: var(--ok); }
+
+  .timeline { position: relative; margin-top: 6px; padding-left: 18px; }
+  .timeline::before { content: ""; position: absolute; left: 5px; top: 6px; bottom: 6px; width: 2px; background: var(--panel-edge); }
+  .titem { position: relative; padding: 8px 0 12px; border-bottom: 1px solid #16202c; }
+  .titem::before {
+    content: ""; position: absolute; left: -18px; top: 14px; width: 12px; height: 12px;
+    border-radius: 50%; background: #26334a; border: 2px solid #101725;
+  }
+  .titem.flagged::before { background: var(--danger); box-shadow: 0 0 7px rgba(255,93,93,0.7); }
+  .titem.warn::before { background: var(--warn); }
+  .titem .row1 { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+  .titem .when { color: var(--muted); font-size: 11.5px; font-family: Consolas, monospace; }
+  .titem .lag { color: var(--muted); font-size: 10.5px; }
+</style>
+</head>
+<body>
+
+<div id="banner"></div>
+
+<header>
+  <h1>Fraud<span>Stream</span> · Live Fraud Tracing</h1>
+  <div class="pill" id="detector-pill"><div class="dot"></div><span id="detector-txt">detector…</span></div>
+  <div class="pill" id="live"><div class="dot"></div><span>LIVE</span></div>
+  <label for="pause"><input type="checkbox" id="pause"> pause</label>
+</header>
+
+<nav class="tabs">
+  <button class="tab active" data-tab="alerts">🚨 Alerts</button>
+  <button class="tab" data-tab="map">🗺 Live map</button>
+  <button class="tab" data-tab="stream">📡 Transaction stream</button>
+  <button class="tab" data-tab="explorer">🔍 Card explorer</button>
+</nav>
+
+<!-- ============ MAP TAB ============ -->
+<section class="tabpane" id="pane-map">
+  <div class="panel">
+    <h2>Transaction map · India · last ~250 txns</h2>
+    <div style="position:relative">
+      <div id="map"><div class="empty" style="padding-top:260px">loading map…</div></div>
+      <div class="map-legend">
+        <b><span style="color:var(--danger)">●</span> flagged</b> &nbsp;
+        <span style="color:var(--ok)">●</span> clean &nbsp;·&nbsp;
+        <span id="map-count">0 txns</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ALERTS TAB ============ -->
+<section class="tabpane active" id="pane-alerts">
+  <div class="kpis">
+    <div class="kpi txns"><div class="label">Transactions processed</div><div class="value" id="k-txns">–</div></div>
+    <div class="kpi alerts"><div class="label">Alerts raised</div><div class="value" id="k-alerts">–</div></div>
+    <div class="kpi rate"><div class="label">Alert rate</div><div class="value" id="k-rate">–</div></div>
+    <div class="kpi"><div class="label">Alerts / min (5m)</div><div class="value" id="k-permin">–</div></div>
+    <div class="kpi"><div class="label">Avg pipeline lag</div><div class="value" id="k-lag">–</div></div>
+    <div class="kpi"><div class="label">Labeled ✓ / ✕</div><div class="value" id="k-labels">–</div></div>
+  </div>
+
+  <div class="grid2">
+    <div class="panel"><h2>Detections by rule</h2><div id="rules"><div class="empty">waiting for data…</div></div></div>
+    <div class="panel"><h2>Alert volume · last 15 min</h2><div class="trend" id="trend"></div>
+      <div class="trend-axis"><span>-15m</span><span>-7m</span><span>now</span></div></div>
+  </div>
+
+  <div class="panel">
+    <h2>Recent alerts · click a card to trace it</h2>
+    <div class="filterbar">
+      <select id="f-status">
+        <option value="">all statuses</option>
+        <option value="new">new</option>
+        <option value="acknowledged">acknowledged</option>
+        <option value="confirmed_fraud">confirmed fraud</option>
+        <option value="false_positive">false positive</option>
+      </select>
+      <span class="resultcount" id="a-count"></span>
+    </div>
+    <div class="scroll"><table>
+      <thead><tr><th>Time</th><th>Card</th><th>Txn</th><th>Amount</th><th>Location</th><th>Score</th><th>Triggered rules</th><th>Status / action</th></tr></thead>
+      <tbody id="alert-rows"><tr><td colspan="8" class="empty">waiting for data…</td></tr></tbody>
+    </table></div>
+  </div>
+</section>
+
+<!-- ============ STREAM TAB ============ -->
+<section class="tabpane" id="pane-stream">
+  <div class="panel">
+    <h2>Every transaction · clean or flagged</h2>
+    <div class="filterbar">
+      <input type="search" id="f-text" placeholder="search card / txn / merchant / city…">
+      <input type="number" id="f-min" placeholder="min ₹">
+      <label><input type="checkbox" id="f-flagged"> flagged only</label>
+      <span class="resultcount" id="f-count"></span>
+    </div>
+    <div class="scroll"><table>
+      <thead><tr><th>Time</th><th>Txn</th><th>Card</th><th>Merchant</th><th>Amount</th><th>Location</th><th>Verdict</th><th>Evidence</th></tr></thead>
+      <tbody id="stream-rows"><tr><td colspan="8" class="empty">waiting for data…</td></tr></tbody>
+    </table></div>
+  </div>
+</section>
+
+<!-- ============ EXPLORER TAB ============ -->
+<section class="tabpane" id="pane-explorer">
+  <div class="panel">
+    <h2>Look up a card</h2>
+    <div class="filterbar">
+      <input type="text" id="exp-card" placeholder="card_1234" style="width:220px;font-family:Consolas,monospace">
+      <button class="tab" style="border:1px solid var(--panel-edge);border-radius:7px;padding:7px 14px" onclick="openCard(document.getElementById('exp-card').value.trim())">Trace card →</button>
+    </div>
+    <p style="color:var(--muted);font-size:13px;line-height:1.6">
+      The drawer shows the card's <b>live detector state straight from Redis</b> — deny-list status,
+      last-seen location, and current sliding-window velocity — followed by its recent transaction
+      history with each verdict and the evidence behind every flag.<br>
+      Tip: cards are clickable everywhere (alert feed, stream table).
+    </p>
+  </div>
+</section>
+
+<!-- ============ CARD DRAWER ============ -->
+<div class="overlay" id="overlay" onclick="closeCard()"></div>
+<aside class="drawer" id="drawer">
+  <div class="drawer-head">
+    <h3 id="drawer-title">card_?</h3>
+    <span id="drawer-bl"></span>
+    <button class="closex" onclick="closeCard()">✕</button>
+  </div>
+  <div id="drawer-body"><div class="empty">loading…</div></div>
+</aside>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const RULE_LABELS = {
+  amount_threshold: "amount",
+  velocity_count: "velocity count",
+  velocity_sum: "velocity sum",
+  geo_velocity: "geo velocity",
+  blacklist: "blacklist",
+};
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmtMoney = n => "₹" + Number(n).toLocaleString("en-IN", {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const cityName = c => c ? c.charAt(0).toUpperCase() + c.slice(1) : "—";
+const locCell = t => `<span class="mono" title="${t.lat.toFixed(4)}, ${t.lon.toFixed(4)}">${esc(cityName(t.city))}</span>`;
+const fmtTime = ms => new Date(ms).toLocaleTimeString("en-US", {hour12: false});
+let alertsCache = [];
+
+/* ---------- tabs ---------- */
+let activeTab = "alerts";
+document.querySelectorAll(".tab[data-tab]").forEach(btn => btn.addEventListener("click", () => {
+  document.querySelectorAll(".tab[data-tab]").forEach(b => b.classList.toggle("active", b === btn));
+  document.querySelectorAll(".tabpane").forEach(p => p.classList.toggle("active", p.id === "pane-" + btn.dataset.tab));
+  activeTab = btn.dataset.tab;
+  if (activeTab === "stream") loadStream();
+  if (activeTab === "map") {
+    initMapIfNeeded();
+    setTimeout(() => { if (map) { map.invalidateSize(); updateMap(); } }, 80);
+  }
+}));
+
+/* ---------- shared renderers ---------- */
+function badgeClass(score) { return score >= 95 ? "s100" : score >= 85 ? "s85" : "s70"; }
+function chipsHtml(rules) {
+  return rules.map(r => `<span class="chip ${esc(r.rule)}" title="${esc(r.detail)}">${esc(RULE_LABELS[r.rule] || r.rule)}</span>`).join("");
+}
+function detailsHtml(rules) { return rules.map(r => esc(r.detail)).join(" · "); }
+
+function renderKpis(stats, alerts) {
+  const rate = stats.txns_processed > 0 ? (100 * stats.alerts_raised / stats.txns_processed).toFixed(2) + "%" : "0%";
+  const cutoff = Date.now() - 5 * 60 * 1000;
+  document.getElementById("k-txns").textContent = stats.txns_processed.toLocaleString();
+  document.getElementById("k-alerts").textContent = stats.alerts_raised.toLocaleString();
+  document.getElementById("k-rate").textContent = rate;
+  document.getElementById("k-permin").textContent =
+    Math.round(alerts.filter(a => a.created_ms >= cutoff).length / 5);
+  const labels = stats.labels || {};
+  document.getElementById("k-labels").textContent =
+    `${labels.confirmed_fraud || 0} / ${labels.false_positive || 0}`;
+}
+
+function renderRules(hits) {
+  const entries = Object.entries(hits).sort((a, b) => b[1] - a[1]);
+  const max = Math.max(1, ...entries.map(e => e[1]));
+  document.getElementById("rules").innerHTML = entries.length === 0
+    ? '<div class="empty">no detections yet…</div>'
+    : entries.map(([rule, count]) => `
+      <div class="bar-row">
+        <span>${esc(RULE_LABELS[rule] || rule)}</span>
+        <div class="bar-track"><div class="bar-fill chip ${esc(rule)}" style="width:${100 * count / max}%"></div></div>
+        <span class="count">${count}</span>
+      </div>`).join("");
+}
+
+function renderTrend(alerts) {
+  const now = Date.now(), buckets = new Array(15).fill(0);
+  for (const a of alerts) {
+    const m = Math.floor((now - a.created_ms) / 60000);
+    if (m >= 0 && m < 15) buckets[14 - m]++;
+  }
+  const max = Math.max(1, ...buckets);
+  document.getElementById("trend").innerHTML = buckets.map((n, i) => `
+    <div class="col" style="height:${Math.max(2, 100 * n / max)}%">
+      <span class="tip">${n} alert${n === 1 ? "" : "s"} · ${15 - i}m ago</span></div>`).join("");
+}
+
+function statusChip(s) {
+  const map = {
+    new: ["new", "var(--warn)"],
+    acknowledged: ["ack", "var(--muted)"],
+    confirmed_fraud: ["fraud ✓", "var(--danger)"],
+    false_positive: ["false positive", "var(--ok)"],
+  };
+  const [label, color] = map[s] || map.new;
+  return `<span class="statuschip" style="color:${color};border-color:${color}">${label}</span>`;
+}
+
+function labelButtons(a) {
+  if (a.status === "confirmed_fraud" || a.status === "false_positive") return "";
+  return `<button class="actbtn" data-label="confirmed_fraud" data-id="${esc(a.alert_id)}" title="Confirm fraud">✓</button>` +
+         `<button class="actbtn" data-label="false_positive" data-id="${esc(a.alert_id)}" title="False positive">✕</button>` +
+         `<button class="actbtn" data-label="acknowledged" data-id="${esc(a.alert_id)}" title="Acknowledge">…</button>`;
+}
+
+function renderAlerts(alerts) {
+  const filter = document.getElementById("f-status").value;
+  const shown = alerts.filter(a => !filter || (a.status || "new") === filter);
+  document.getElementById("a-count").textContent =
+    `${shown.length} of ${alerts.length} alerts`;
+  const rows = shown.slice(0, 150).map(a => {
+    const t = a.txn;
+    return `<tr>
+      <td class="mono">${fmtTime(a.created_ms)}</td>
+      <td><span class="cardlink mono" data-card="${esc(t.card_id)}">${esc(t.card_id)}</span></td>
+      <td class="mono" title="${esc(t.txn_id)}">${esc(t.txn_id.slice(0, 8))}</td>
+      <td class="amt">${fmtMoney(t.amount)}</td>
+      <td>${locCell(t)}</td>
+      <td><span class="badge ${badgeClass(a.risk_score)}">${a.risk_score}</span></td>
+      <td>${chipsHtml(a.triggered_rules)}${a.ml_score != null ? `<span class="chip ml" title="ML model score">ML ${a.ml_score.toFixed(0)}</span>` : ""}<div class="detail">${detailsHtml(a.triggered_rules)}</div></td>
+      <td>${statusChip(a.status || "new")}<br>${labelButtons(a)}</td>
+    </tr>`;
+  }).join("");
+  document.getElementById("alert-rows").innerHTML =
+    rows || '<tr><td colspan="8" class="empty">no alerts match</td></tr>';
+}
+
+async function labelAlert(id, status) {
+  try {
+    const res = await fetch(`/alerts/${id}/label`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const a = alertsCache.find(x => x.alert_id === id);
+    if (a) a.status = status;
+    renderAlerts(alertsCache);
+    setLive(true);
+  } catch (err) {
+    console.error("label failed:", err);
+    showBanner("couldn't save label — will retry on next refresh");
+  }
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest(".actbtn");
+  if (!b) return;
+  e.stopPropagation();
+  labelAlert(b.dataset.id, b.dataset.label);
+});
+document.getElementById("f-status").addEventListener("change", () => renderAlerts(alertsCache));
+
+/* ---------- map tab ---------- */
+let map = null, markerLayer = null;
+
+function initMapIfNeeded() {
+  if (map) { map.invalidateSize(); return; }
+  if (typeof L === "undefined") {
+    document.getElementById("map").innerHTML =
+      '<div class="empty" style="padding-top:260px">map library failed to load (offline?)</div>';
+    return;
+  }
+  document.getElementById("map").innerHTML = "";
+  map = L.map("map", { zoomControl: true }).setView([22.5, 80], 5);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: "&copy; OpenStreetMap contributors", maxZoom: 18,
+  }).addTo(map);
+  markerLayer = L.layerGroup().addTo(map);
+}
+
+function popupHtml(rec) {
+  const t = rec.txn;
+  return `<div style="font-size:12.5px;line-height:1.55">
+    <b>${esc(cityName(t.city))}</b> · <b>${fmtMoney(t.amount)}</b><br>
+    card <span class="mono">${esc(t.card_id)}</span> · merchant <span class="mono">${esc(t.merchant_id)}</span><br>
+    ${verdictBadge(rec.score, 70)} ${chipsHtml(rec.rules)}
+    <br><span class="mono">txn ${esc(t.txn_id.slice(0, 8))} · lag ${rec.lag_ms} ms</span></div>`;
+}
+
+function updateMap() {
+  if (!map || !markerLayer || !streamCache.length) return;
+  const THRESHOLD = 70;
+  markerLayer.clearLayers();
+  let flagged = 0;
+  for (const rec of streamCache) {
+    const t = rec.txn;
+    const isFlagged = rec.score >= THRESHOLD;
+    if (isFlagged) flagged++;
+    let marker;
+    if (isFlagged) {
+      marker = L.marker([t.lat, t.lon], {
+        icon: L.divIcon({ className: "", html: '<div class="pin"></div>', iconSize: [14, 14], iconAnchor: [7, 7] }),
+      });
+    } else {
+      const radius = Math.min(3 + Math.log10(Math.max(t.amount, 10)) * 1.6, 11);
+      marker = L.circleMarker([t.lat, t.lon], {
+        radius, color: "#35c28f", weight: 0, fillOpacity: 0.45,
+      });
+    }
+    marker.bindPopup(popupHtml(rec));
+    markerLayer.addLayer(marker);
+  }
+  document.getElementById("map-count").textContent = `${streamCache.length} txns · ${flagged} flagged`;
+}
+
+/* ---------- stream tab ---------- */
+async function loadStream() {
+  try {
+    streamCache = await fetch("/transactions?limit=500").then(r => r.json());
+    renderStream();
+    if (activeTab === "map") updateMap();
+  } catch {}
+}
+let streamCache = [];
+
+function verdictBadge(score, threshold) {
+  return score >= threshold
+    ? `<span class="badge ${badgeClass(score)}">⚑ ${score}</span>`
+    : '<span class="badge clean">clean</span>';
+}
+
+function renderStream() {
+  const q = document.getElementById("f-text").value.toLowerCase();
+  const minAmt = parseFloat(document.getElementById("f-min").value) || 0;
+  const flaggedOnly = document.getElementById("f-flagged").checked;
+  const THRESHOLD = 70;
+
+  const rowsAll = streamCache.map(r => ({...r, flagged: r.score >= THRESHOLD}));
+  const rows = rowsAll.filter(r => {
+    if (flaggedOnly && !r.flagged) return false;
+    if (r.txn.amount < minAmt) return false;
+    if (!q) return true;
+    const hay = `${r.txn.card_id} ${r.txn.txn_id} ${r.txn.merchant_id} ${r.txn.user_id}`.toLowerCase();
+    return hay.includes(q);
+  });
+
+  document.getElementById("f-count").textContent = `${rows.length} of ${rowsAll.length} txns`;
+  document.getElementById("stream-rows").innerHTML = rows.length === 0
+    ? '<tr><td colspan="8" class="empty">nothing matches</td></tr>'
+    : rows.map(r => {
+        const t = r.txn;
+        return `<tr${r.flagged ? ' style="background:rgba(255,93,93,0.04)"' : ""}>
+          <td class="mono">${fmtTime(t.ts_ms)}</td>
+          <td class="mono" title="${esc(t.txn_id)}">${esc(t.txn_id.slice(0, 8))}</td>
+          <td><span class="cardlink mono" data-card="${esc(t.card_id)}">${esc(t.card_id)}</span></td>
+          <td class="mono">${esc(t.merchant_id)}</td>
+          <td class="amt">${fmtMoney(t.amount)}</td>
+          <td>${locCell(t)}</td>
+          <td>${verdictBadge(r.score, THRESHOLD)}</td>
+          <td>${chipsHtml(r.rules)}${r.rules.length ? `<div class="detail">${detailsHtml(r.rules)}</div>` : ""}
+              <div class="detail">lag ${r.lag_ms} ms</div></td>
+        </tr>`;
+      }).join("");
+}
+["f-text", "f-min"].forEach(id =>
+  document.getElementById(id).addEventListener("input", () => renderStream()));
+document.getElementById("f-flagged").addEventListener("change", () => renderStream());
+
+/* ---------- card trace drawer ---------- */
+function openDrawer(title, blacklisted) {
+  document.getElementById("drawer-title").textContent = title;
+  document.getElementById("drawer-bl").innerHTML = blacklisted === null ? ""
+    : blacklisted ? '<span class="bl-tag bl-yes">⛔ DENY-LISTED</span>' : '<span class="bl-tag bl-no">✓ not deny-listed</span>';
+  document.getElementById("drawer").classList.add("open");
+  document.getElementById("overlay").classList.add("open");
+}
+function closeCard() {
+  document.getElementById("drawer").classList.remove("open");
+  document.getElementById("overlay").classList.remove("open");
+}
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeCard(); });
+document.addEventListener("click", e => {
+  const el = e.target.closest("[data-card]");
+  if (el) openCard(el.dataset.card);
+});
+
+function stateBoxes(data) {
+  const cs = data.transactions?.[0]?.card_state || {};
+  const p = cs.profile || {};
+  const v = cs.velocity || {};
+  const lastSeen = p.ts_ms && p.lat != null
+    ? `${esc(cityName(p.city))} · ${fmtTime(+p.ts_ms)}`
+    : "—";
+  return `
+    <div class="statebox"><div class="label">Txns traced</div><div class="value">${data.txn_count ?? 0}</div></div>
+    <div class="statebox"><div class="label">Flagged</div><div class="value" style="color:${data.flagged_count ? "var(--danger)" : "var(--ok)"}">${data.flagged_count ?? 0}</div></div>
+    <div class="statebox"><div class="label">Last seen</div><div class="value" style="font-size:13px">${esc(lastSeen)}</div></div>
+    <div class="statebox"><div class="label">Velocity · ${v.count_window_sec ?? "?"}s</div><div class="value">${v.count ?? "–"}</div></div>
+    <div class="statebox"><div class="label">Spend · ${v.sum_window_sec ?? "?"}s</div><div class="value">${fmtMoney(v.sum ?? 0)}</div></div>`;
+}
+
+function timelineHtml(transactions) {
+  const THRESHOLD = 70;
+  if (!transactions.length) return '<div class="empty">no recent activity</div>';
+  return `<div class="timeline">` + transactions.map(rec => {
+    const t = rec.txn;
+    const cls = rec.score >= 95 ? "flagged" : rec.score >= THRESHOLD ? "warn" : "";
+    return `<div class="titem ${cls}">
+      <div class="row1">
+        <span class="when">${fmtTime(t.ts_ms)}</span>
+        <span class="amt">${fmtMoney(t.amount)}</span>
+        <span class="mono">${esc(cityName(t.city))}</span>
+        <span style="margin-left:auto">${verdictBadge(rec.score, THRESHOLD)}</span>
+      </div>
+      <div class="mono" title="${esc(t.txn_id)}">txn ${esc(t.txn_id.slice(0, 8))} · ${t.lat.toFixed(3)}, ${t.lon.toFixed(3)} · <span class="lag">lag ${rec.lag_ms} ms</span></div>
+      ${rec.rules.length ? `<div>${chipsHtml(rec.rules)}<div class="detail">${detailsHtml(rec.rules)}</div></div>` : ""}
+    </div>`;
+  }).join("") + "</div>";
+}
+
+let currentCardId = null;
+
+async function openCard(cardId, attempt = 0) {
+  if (!cardId) return;
+  currentCardId = cardId;
+  openDrawer(cardId, null);
+  const body = document.getElementById("drawer-body");
+  if (attempt === 0) body.innerHTML = '<div class="empty">loading…</div>';
+
+  let data;
+  try {
+    const res = await fetch("/cards/" + encodeURIComponent(cardId));
+    if (res.status === 404) {
+      body.innerHTML = `<div class="empty">No history found for <b>${esc(cardId)}</b>.<br><br>
+        Cards appear here after their first transaction is processed.</div>`;
+      return;
+    }
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    data = await res.json();
+  } catch (err) {
+    console.error("openCard fetch failed:", err);
+    const waitSec = attempt < 3 ? 1 : 5;
+    body.innerHTML = `<div class="empty">⏳ API unreachable (${esc(err.message)}) — retrying…
+      <span class="mono">next attempt in ${waitSec}s</span><br><br>
+      <button class="tab" style="border:1px solid var(--panel-edge);border-radius:7px;padding:7px 14px"
+              onclick="openCard('${esc(cardId)}')">Retry now</button></div>`;
+    setTimeout(() => { if (currentCardId === cardId) openCard(cardId, attempt + 1); }, waitSec * 1000);
+    return;
+  }
+
+  try {
+    openDrawer(data.card_id, data.transactions[0]?.card_state.blacklisted ?? null);
+    document.getElementById("drawer-body").innerHTML =
+      `<div class="stategrid">${stateBoxes(data)}</div>` +
+      `<h2 class="panel" style="background:none;border:none;padding:4px 0;margin-bottom:2px">Recent activity</h2>` +
+      timelineHtml(data.transactions);
+  } catch (err) {
+    console.error("openCard render failed:", err);
+    body.innerHTML = `<div class="empty">⚠️ Render error: <span class="mono">${esc(err.message)}</span></div>`;
+  }
+}
+
+/* ---------- main loop ---------- */
+function setLive(on) { document.getElementById("live").classList.toggle("on", on); }
+
+function showBanner(msg) {
+  const b = document.getElementById("banner");
+  b.textContent = msg;
+  b.classList.add("show");
+}
+function hideBanner() { document.getElementById("banner").classList.remove("show"); }
+
+function renderDetectorPill(stats) {
+  const pill = document.getElementById("detector-pill");
+  const ageSec = stats.last_processed_ms ? (Date.now() - stats.last_processed_ms) / 1000 : Infinity;
+  const on = ageSec < 5;
+  pill.classList.toggle("on", on);
+  pill.classList.toggle("stale", !on);
+  document.getElementById("detector-txt").textContent =
+    on ? `detector · ${ageSec.toFixed(1)}s ago`
+       : ageSec === Infinity ? "detector · idle" : `detector · stale ${ageSec.toFixed(0)}s`;
+}
+
+let wasDown = false;
+
+async function refresh() {
+  try {
+    const [stats, alerts] = await Promise.all([
+      fetch("/stats").then(r => r.json()),
+      fetch("/alerts?limit=500").then(r => r.json()),
+    ]);
+    alertsCache = alerts;
+    renderKpis(stats, alerts);
+    renderDetectorPill(stats);
+    renderRules(stats.rule_hits);
+    renderTrend(alerts);
+    renderAlerts(alerts);
+    setLive(true);
+    if (wasDown) {
+      wasDown = false;
+      hideBanner();
+      if (currentCardId && document.getElementById("drawer").classList.contains("open")) {
+        openCard(currentCardId);
+      }
+    }
+  } catch {
+    setLive(false);
+    if (!wasDown) {
+      wasDown = true;
+      showBanner("API unreachable — reconnecting automatically…");
+    }
+  }
+}
+
+setInterval(() => { if (!document.getElementById("pause").checked) { refresh(); loadStream(); } }, 3000);
+refresh();
+</script>
+</body>
+</html>
