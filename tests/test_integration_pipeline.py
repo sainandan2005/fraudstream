@@ -85,7 +85,7 @@ def test_alerts_are_scored_by_rules_and_model():
         pytest.skip("not enough alerts generated yet")
     enriched = [a for a in alerts if a.get("ml_score") is not None]
     assert len(enriched) >= max(1, len(alerts) // 3), (
-        "too few alerts carried an ML score — retro-patch may be broken"
+        "too few alerts carried an ML score, retro-patch may be broken"
     )
     for alert in alerts:
         assert alert["risk_score"] >= 70

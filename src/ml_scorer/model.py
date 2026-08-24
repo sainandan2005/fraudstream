@@ -112,5 +112,5 @@ def load_model() -> HeuristicModel | SklearnModel:
             print(f"loaded trained model {model.version} from {path}")
             return model
         except Exception as exc:  # noqa: BLE001 - corrupted artifact must never take scoring down
-            print(f"failed to load {path}: {exc} — falling back to heuristic")
+            print(f"failed to load {path}: {exc}, falling back to heuristic")
     return HeuristicModel()

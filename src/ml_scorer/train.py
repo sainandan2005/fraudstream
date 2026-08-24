@@ -89,7 +89,7 @@ def train_model(rows: list[dict]) -> dict:
 
     if len(np.unique(y_train)) < 2:
         raise RuntimeError(
-            "training window contains a single class — collect more data before training"
+            "training window contains a single class, collect more data before training"
         )
 
     results = {}
@@ -121,7 +121,7 @@ def main(out_dir: str | None = None) -> str | None:
     out_dir = out_dir or os.environ.get("MODELS_OUT", "/app/models")
     rows = fetch_rows()
     if len(rows) < MIN_ROWS:
-        print(f"only {len(rows)} training rows collected (need {MIN_ROWS}) — keep the pipeline running")
+        print(f"only {len(rows)} training rows collected (need {MIN_ROWS}), keep the pipeline running")
         return None
     bundle = train_model(rows)
     os.makedirs(out_dir, exist_ok=True)

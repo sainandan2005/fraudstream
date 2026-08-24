@@ -210,12 +210,12 @@
 <!-- ============ ALERTS TAB ============ -->
 <section class="tabpane active" id="pane-alerts">
   <div class="kpis">
-    <div class="kpi txns"><div class="label">Transactions processed</div><div class="value" id="k-txns">–</div></div>
-    <div class="kpi alerts"><div class="label">Alerts raised</div><div class="value" id="k-alerts">–</div></div>
-    <div class="kpi rate"><div class="label">Alert rate</div><div class="value" id="k-rate">–</div></div>
-    <div class="kpi"><div class="label">Alerts / min (5m)</div><div class="value" id="k-permin">–</div></div>
-    <div class="kpi"><div class="label">Avg pipeline lag</div><div class="value" id="k-lag">–</div></div>
-    <div class="kpi"><div class="label">Labeled ✓ / ✕</div><div class="value" id="k-labels">–</div></div>
+    <div class="kpi txns"><div class="label">Transactions processed</div><div class="value" id="k-txns">-</div></div>
+    <div class="kpi alerts"><div class="label">Alerts raised</div><div class="value" id="k-alerts">-</div></div>
+    <div class="kpi rate"><div class="label">Alert rate</div><div class="value" id="k-rate">-</div></div>
+    <div class="kpi"><div class="label">Alerts / min (5m)</div><div class="value" id="k-permin">-</div></div>
+    <div class="kpi"><div class="label">Avg pipeline lag</div><div class="value" id="k-lag">-</div></div>
+    <div class="kpi"><div class="label">Labeled ✓ / ✕</div><div class="value" id="k-labels">-</div></div>
   </div>
 
   <div class="grid2">
@@ -269,8 +269,8 @@
       <button class="tab" style="border:1px solid var(--panel-edge);border-radius:7px;padding:7px 14px" onclick="openCard(document.getElementById('exp-card').value.trim())">Trace card →</button>
     </div>
     <p style="color:var(--muted);font-size:13px;line-height:1.6">
-      The drawer shows the card's <b>live detector state straight from Redis</b> — deny-list status,
-      last-seen location, and current sliding-window velocity — followed by its recent transaction
+      The drawer shows the card's <b>live detector state straight from Redis</b>, deny-list status,
+      last-seen location, and current sliding-window velocity, followed by its recent transaction
       history with each verdict and the evidence behind every flag.<br>
       Tip: cards are clickable everywhere (alert feed, stream table).
     </p>
@@ -299,7 +299,7 @@ const RULE_LABELS = {
 };
 const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtMoney = n => "₹" + Number(n).toLocaleString("en-IN", {minimumFractionDigits: 2, maximumFractionDigits: 2});
-const cityName = c => c ? c.charAt(0).toUpperCase() + c.slice(1) : "—";
+const cityName = c => c ? c.charAt(0).toUpperCase() + c.slice(1) : "-";
 const locCell = t => `<span class="mono" title="${t.lat.toFixed(4)}, ${t.lon.toFixed(4)}">${esc(cityName(t.city))}</span>`;
 const fmtTime = ms => new Date(ms).toLocaleTimeString("en-US", {hour12: false});
 let alertsCache = [];
@@ -416,7 +416,7 @@ async function labelAlert(id, status) {
     setLive(true);
   } catch (err) {
     console.error("label failed:", err);
-    showBanner("couldn't save label — will retry on next refresh");
+    showBanner("couldn't save label, will retry on next refresh");
   }
 }
 document.addEventListener("click", e => {
@@ -557,12 +557,12 @@ function stateBoxes(data) {
   const v = cs.velocity || {};
   const lastSeen = p.ts_ms && p.lat != null
     ? `${esc(cityName(p.city))} · ${fmtTime(+p.ts_ms)}`
-    : "—";
+    : "-";
   return `
     <div class="statebox"><div class="label">Txns traced</div><div class="value">${data.txn_count ?? 0}</div></div>
     <div class="statebox"><div class="label">Flagged</div><div class="value" style="color:${data.flagged_count ? "var(--danger)" : "var(--ok)"}">${data.flagged_count ?? 0}</div></div>
     <div class="statebox"><div class="label">Last seen</div><div class="value" style="font-size:13px">${esc(lastSeen)}</div></div>
-    <div class="statebox"><div class="label">Velocity · ${v.count_window_sec ?? "?"}s</div><div class="value">${v.count ?? "–"}</div></div>
+    <div class="statebox"><div class="label">Velocity · ${v.count_window_sec ?? "?"}s</div><div class="value">${v.count ?? "-"}</div></div>
     <div class="statebox"><div class="label">Spend · ${v.sum_window_sec ?? "?"}s</div><div class="value">${fmtMoney(v.sum ?? 0)}</div></div>`;
 }
 
@@ -607,7 +607,7 @@ async function openCard(cardId, attempt = 0) {
   } catch (err) {
     console.error("openCard fetch failed:", err);
     const waitSec = attempt < 3 ? 1 : 5;
-    body.innerHTML = `<div class="empty">⏳ API unreachable (${esc(err.message)}) — retrying…
+    body.innerHTML = `<div class="empty">⏳ API unreachable (${esc(err.message)}), retrying…
       <span class="mono">next attempt in ${waitSec}s</span><br><br>
       <button class="tab" style="border:1px solid var(--panel-edge);border-radius:7px;padding:7px 14px"
               onclick="openCard('${esc(cardId)}')">Retry now</button></div>`;
@@ -674,7 +674,7 @@ async function refresh() {
     setLive(false);
     if (!wasDown) {
       wasDown = true;
-      showBanner("API unreachable — reconnecting automatically…");
+      showBanner("API unreachable, reconnecting automatically…");
     }
   }
 }

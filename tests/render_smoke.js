@@ -47,5 +47,5 @@ setTimeout(async () => {
   await new Promise(r => setTimeout(r, 50));
   if (fetchCalls === 0) throw new Error("initial refresh() never ran");
 
-  console.log("RENDER SMOKE OK — state:", state.length, "chars | timeline:", payload.transactions.length, "items | flagged-badge:", ftl.includes("badge"), "| empty-card safe | live-loop ran");
+  console.log("RENDER SMOKE OK, state:", state.length, "chars | timeline:", payload.transactions.length, "items | flagged-badge:", ftl.includes("badge"), "| empty-card safe | live-loop ran");
 }, 10);
